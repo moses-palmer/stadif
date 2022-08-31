@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+# We must run from the stable-diffusion directory
+cd "/opt/stable-diffusion"
+
+
+##
+# The path to the script to launch.
+SCRIPT="scripts/$1"
+if [ ! -f "$SCRIPT" ]; then
+    echo "Please specify the name of a script as first argument." >&2
+    echo >&2
+    echo "Use one of the following:" >&2
+    ls scripts >&2
+    exit 1
+else
+    shift
+fi
+
+
+conda activate ldm
+python "$SCRIPT" "$@"
