@@ -1,0 +1,96 @@
+#!/bin/sh
+#
+## Wraps execution of the stable-diffusion docker image.
+##
+## Usage: stable-diffusion SCRIPT [--outdir=OUTDIR] [ARGS...]
+##   SCRIPT The name of a stable-diffusion script to execute, excluding its
+##          extension.
+##   OUTDIR The output directory specified as a host directory. This will be
+##          mounted inside the container. If the first argument is not
+##          --outdir, the current directory will be used. In this case, the
+##          permissions must be set to allow the user inside the container to
+##          write to this directory.
+
+set -e
+
+# Show help if requested
+if [ "$1" = "-h" ]; then
+    sed -e '/^$/,$d' "$0" | awk '/^##/ { print substr($0, 4) }'
+    echo
+    exit 0
+fi
+
+
+##
+# The container script name without extension.
+SCRIPT="$1"
+shift
+
+
+##
+# The mount information for the model.
+MODEL_SRC="$HOME/.local/lib/stable-diffusion/models"
+MODEL_DST="/opt/stable-diffusion/models/ldm/stable-diffusion-v1"
+
+##
+# The huggingface cache directory.
+HUGGINGFACE_CACHE_SRC="$HOME/.cache/huggingface"
+HUGGINGFACE_CACHE_DST="/opt/stadif/.cache/huggingface"
+
+##
+# The tensor cache directory.
+TENSOR_CACHE_SRC="$HOME/.cache/tensor"
+TENSOR_CACHE_DST="/opt/stadif/.cache/tensor"
+
+
+##
+# Ensures that a directory exists on the host and is readable and writable by
+# all.
+#
+# The absolute path is written to STDOUT.
+host_directory() {
+    if [ ! -d "$1" ]; then
+        mkdir -p "$1"
+    fi
+    chmod a+rwx "$1"
+    realpath "$1"
+}
+
+
+##
+# The output directory.
+case "$1" in
+    --outdir=*)
+        OUTPUT_SRC="$(echo "$1" | cut -d= -f2)"
+        mkdir -p "$OUTPUT_SRC"
+        chmod a+rwx "$OUTPUT_SRC"
+        OUTPUT_SRC="$(host_directory "$OUTPUT_SRC")"
+        shift
+        ;;
+
+    *)
+        OUTPUT_SRC="$PWD"
+        echo "The first argument is not --outdir=OUTPUT, not remapping paths."
+        ;;
+esac
+OUTPUT_DST="/opt/stable-diffusion/outputs/$SCRIPT-samples/"
+
+
+# Ensure the directories exist
+MODEL_SRC="$(host_directory "$MODEL_SRC")"
+HUGGINGFACE_CACHE_SRC="$(host_directory "$HUGGINGFACE_CACHE_SRC")"
+TENSOR_CACHE_SRC="$(host_directory "$TENSOR_CACHE_SRC")"
+
+
+# Finally run the requestd script
+docker run --rm -ti \
+    --mount "type=bind,src=$MODEL_SRC,dst=$MODEL_DST" \
+    --mount "type=bind,src=$HUGGINGFACE_CACHE_SRC,dst=$HUGGINGFACE_CACHE_DST" \
+    --mount "type=bind,src=$TENSOR_CACHE_SRC,dst=$TENSOR_CACHE_DST" \
+    --mount "type=bind,src=$OUTPUT_SRC,dst=$OUTPUT_DST" \
+    stadif:latest \
+    bash \
+    -l \
+    /entrypoint \
+    "$SCRIPT.py" \
+    "$@"
